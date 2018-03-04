@@ -1,0 +1,542 @@
+<html>
+<head>
+<style>
+body,html{
+margin: 0;
+width: 100%;
+height: 100%;
+background: #333;
+}
+
+.button{
+	width: 100%;
+	height: 50px;
+	background: #EEE;
+	outline: none;
+	border: 1px solid black;
+	z-index: 2;
+	position: relative;
+}
+
+.button:hover{
+	background: #AAA;
+}
+
+.textareastyle{
+	width: 100%; 
+	height: 500px; 
+	padding: 10px; 
+	border-radius: 10px 10px 0px 0px;
+	outline: none;
+	background: #666;
+	color: #7FFFD4;
+	font-size: 18px;
+	resize: none;
+	padding-left: 60px;
+}
+
+.textareastyle::-webkit-scrollbar {
+    width: 12px;
+}
+ 
+.textareastyle::-webkit-scrollbar-track {
+    -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); 
+    border-radius: 10px;
+}
+ 
+.textareastyle::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.5); 
+}
+
+.containers{
+width: 49.8%; display: inline-block; margin: 0 auto;
+}
+
+.line_number{
+	height: 480px;
+	position: absolute;
+	font-size: 18px;
+	top: 0px;
+	left: 0px;
+	width: 30px;
+	z-index: 1;
+	background: #fff;
+	border-radius: 10px 0px 0px 0px;
+	overflow-y:hidden;
+	text-align: right;
+	padding: 10px 10px 10px 5px;
+	line-height: 22.3px;
+}
+
+@media screen and (max-width: 1000px) and (min-width: 800px)
+{
+	.containers{
+		width: 47%; margin: 0 auto;
+	}
+}
+
+@media screen and (max-width: 800px)
+{
+	.containers{
+		width: 100%; margin: 0 auto; display: block; padding-bottom: 30px;
+	}
+}
+
+@media screen and (max-device-width: 800px)
+{
+	.containers{
+		width: 100%; margin: 0 auto; display: block; padding-bottom: 30px;
+	}
+	.line_number{
+		font-size: 30px;
+		line-height: 35px;
+	}
+}
+
+</style>
+</head>
+<body>
+<div style="background: #444; width: 100%; height: 100px;">
+	<h1 style="text-align: center; padding-top: 30px; font-family: Papyrus, fantasy; color: #00FFFF">ADA - Assembler</h1>
+</div>
+
+<br>
+<div style="width:100%;">
+	<div class="containers">
+		<div style="width: 80%; margin: 0 auto; position: relative;">
+			<div class="line_number" id="b_line_number" style="overflow: show;">1<br></div>
+			<textarea class="textareastyle" id="binary" placeholder="Type your assembly code..." onscroll="formatter.scrollto(this)" onkeyup="formatter.number_update(event)" onclick="formatter.highlightLine(this,1);" onblur="formatter.highlightLine(this,0);"></textarea><br>
+			<button class="button" onclick="assembler.parse()" >Parse</button>
+			<div style="padding: 10px; border: 1px solid white; border-radius: 0px 0px 10px 10px;"><input type="checkbox" checked id="automate"><span style="color: white;">Automate NOP</span></div>
+		</div>
+	</div>
+	<div class="containers">
+		<div style="width: 80%; margin: 0 auto;">
+			<textarea readonly class="textareastyle" id="binaryText" style="padding-left: 10px;"></textarea><br>
+			<button class="button" onclick="assembler.download()" >Download</button>
+			<select id="type" onchange = "assembler.typeOnChange();" style="width: 100%; padding: 10px; text-align: center; color: white; background: none; outline: none; border: 1px solid white; border-radius: 0px 0px 10px 10px;">
+				<option style="color: black;">Assembly</option>
+				<option style="color: black;">Binary</option>
+			</select>
+		</div>
+	</div>
+</div>
+<script>
+var formatter = {
+	num_div: document.getElementById('b_line_number'),
+	highlightLine : function (self,flag){
+		var _this = this;
+		setTimeout(function(){
+			var textarea = self;
+			var line_numbers = '';
+			if(flag)
+			{
+			line_numbers = _this.get_lines(textarea);
+			}
+			else{
+				for(var i=1; i<= textarea.value.split('\n').length; i++)
+				{
+					line_numbers+= i+"<br>";
+				}
+			}
+			_this.num_div.innerHTML = line_numbers;
+			_this.scrollto(textarea);
+			},10);
+	},
+
+	number_update: function(event){
+		var _this = this;
+		setTimeout(function(){
+		var textarea = event.target;
+			
+		var	line_numbers = _this.get_lines(textarea);
+			_this.num_div.innerHTML = line_numbers;
+			_this.scrollto(textarea);
+			},10);
+	},
+
+	get_lines: function (textarea){
+			var lines = textarea.value.split('\n').length;
+			var line_numbers = '';
+			var cur_line = textarea.value.substr(0, textarea.selectionStart).split("\n").length;
+			for(var i=1; i< cur_line; i++)
+			{
+				line_numbers+= i+"<br>";
+			}
+			line_numbers+= '<span style="display: block; background: #666; color: #CCC;"><b>'+(cur_line)+'</b></span>';
+			for(var i=cur_line+1; i<= lines; i++)
+			{
+				line_numbers+= i+"<br>";
+			}
+			return line_numbers;
+	},
+
+	scrollto: function (self){
+		var textareaScrollOffset = self;
+		this.num_div.scrollTop = textareaScrollOffset.scrollTop;
+	}
+}
+var assembler={
+	errDumps: '',
+	gbinaryText: '',
+	gbinary_nop: [],
+	parse: function(){
+	try{
+		var binary = document.getElementById('binary').value.split("\n");
+		var addr = 0;
+		var jmpLabels = [];
+		var binaryText = "";
+		var binary_nop = binary;
+		var regA = ['NA','NA','NA'],regB = ['NA','NA','NA'];
+		var pc = 0;
+		var i=0;
+		
+		if(document.getElementById('automate').checked)
+		while(i<binary_nop.length){
+			var line = binary_nop[i].trim().split(" ");
+			var opcode = line[0].trim();
+			var cnt = 0;
+			var is_nop = 0;
+			var restOfLine = "";
+			for(var j=1;j<line.length;j++){
+				restOfLine += line[j].trim();
+			}
+			regs= restOfLine.split(',');
+			if(i < 4)
+			{
+				cnt = i;
+			}else
+			{
+				cnt = 3;
+			}
+			if(i!=0 && restOfLine.length>0)
+			{
+					if(opcode !='nop' && opcode.charAt(0)!='.')
+					{
+					var nops = 0;
+						for(var j=0;j<cnt;j++)
+						{
+						
+							if(regA[j]==regs[1]) {
+								is_nop = 1;
+								if(j == 0) {nops = 3;break;}
+								else if(j == 1) {nops = 2;break;}
+								else if(j == 2) {nops = 1;break;}
+							}
+							try{
+							var tmp = regs[2];
+							if(opcode == "beq") tmp =regs[0];
+							if(regA[j]==tmp) {
+								is_nop = 1;
+								if(j == 0) {nops = 3;break;}
+								else if(j == 1) {nops = 2;break;}
+								else if(j == 2) {nops = 1;break;}
+							}
+							}
+							catch(err)
+							{}
+						}
+						var nop_num = nops;
+						while(nops>0){
+								binary_nop.splice(i,0,"nop");
+								nops = nops -1;
+								i = i+1;
+						}
+						i = i-nop_num-is_nop;
+					}
+					/*else
+					if(opcode == "beq")
+						{
+							binary_nop.splice(i,0,"nop");
+							i+=1;
+						} */
+			}
+			var restOfLine = "";
+			if(opcode.charAt(0)!='.' && is_nop==0)
+				{
+				regA[2] = regA[1];
+				regA[1] = regA[0];
+				if(opcode != "swi" && opcode!="nop" && opcode!="beq"){
+				regA[0] = regs[0];
+				}else{
+				regA[0] = "NA";
+				}
+			
+			}
+			
+			i=i+1;
+		}
+		//this.nop_output(binary_nop);
+		for(var i=0;i<binary_nop.length;i++){
+			var line = binary_nop[i].trim().split(" ");
+			var opcode = line[0].trim();
+			if(opcode.charAt(0)=='.')
+				{
+					var jmptag = {'label':opcode.substring(1).trim(),'addr':addr}
+					jmpLabels.push(jmptag)
+				}else{
+					addr +=1;
+				}
+		}
+		for(var i=0;i<binary_nop.length;i++){
+		if(binary_nop[i].length <=1)
+		{
+			continue;
+		}
+		var line = binary_nop[i].trim().split(" ");
+		var alu = '0';
+		var imm = '0';
+		var mem = '0';
+		var reg = '0';
+		var code;
+		var regs;
+		var opcode = line[0].trim();
+			switch(line[0]){
+				case 'add': alu='1';
+							reg='1';
+							code = '0000';break;
+				case 'addi': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0000';break;
+				case 'sub': alu = '1';
+							reg='1';
+							code = '0001';break;
+				case 'subi': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0001'; break;
+				case 'and': alu = '1';
+							reg='1';
+							code = '0010';break;
+				case 'andi': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0010';break;
+				case 'or': alu = '1';
+							reg='1';
+							code = '0011';break;
+				case 'ori': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0011';break;
+				case 'xor': alu = '1';
+							reg='1';
+							code = '0100';break;
+				case 'xori': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0100';break;
+				case 'comp': alu = '1';
+							reg='1';
+							code = '0101';break;
+				case 'compi': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0101';break;
+				case 'sll': alu = '1';
+							reg='1';
+							code = '0110';break;
+				case 'slli': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0110';break;
+				case 'srl': alu = '1';
+							reg='1';
+							code = '0111';break;
+				case 'srli': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '0111';break;
+				case 'not': alu = '1';
+							reg='1';
+							code = '1000';break;
+				case 'noti': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '1000';break;
+				case 'slt': alu = '1';
+							reg='1';
+							code = '1001';break;
+				case 'slti': alu = '1';
+							reg='1';
+							imm = '1';
+							code = '1001';break;
+				case 'beq': code = '0101';break;
+				case 'mov': reg = '1';
+							code = '0000';break;
+				case 'movi': imm = '1';
+							reg='1';
+							code = '0000';break;
+				case 'jmp': code = '1111';break;
+				case 'swi': imm = '1'
+							mem = '1';
+							code = '0000';break;
+				case 'sw': mem = '1';
+							code = '0000';break;
+				case 'lw': reg = '1';
+							code = '1110';break;
+				case 'stall': code = '1100'; break;
+				case 'nop': var t = '0x00000000';
+				binaryText += t+'\n';break;
+				default:
+						if(opcode.charAt(0)!='.')
+						{
+							throw("Error in line: "+(i+1));
+						}
+						
+			}
+			addr += 1;
+			var restOfLine = "";
+			for(var j=1;j<line.length;j++){
+				restOfLine += line[j].trim();
+			}
+			regs= restOfLine.split(',');
+			if(opcode == 'mov' || opcode == 'movi'){
+				if(regs.length > 2){
+					throw("Mov command takes only two values. Check line: "+(i+1));
+				}
+				regs[2] = regs[1];
+				regs[1] = 'r0';
+			}
+			if(opcode == 'stall')
+			{
+				var t = '0x000000'+this.addzeros(2,parseInt(reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}
+			else
+			if( opcode == 'sw')
+			{
+				var t = '0x'+this.addzeros(8,parseInt(this.getRegs(i,regs[0]).trim()+this.getRegs(i,regs[1]).trim()+this.addzeros(8,parseInt(regs[2].trim()).toString(2))+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else
+			if( opcode == 'swi')
+			{
+				var t = '0x'+this.addzeros(8,parseInt(this.addzeros(8,parseInt(regs[0].trim()).toString(2))+this.getRegs(i,regs[1]).trim()+this.addzeros(8,parseInt(regs[2].trim()).toString(2))+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else
+			if( opcode == 'lw')
+			{
+				var t = '0x'+this.addzeros(8,parseInt(parseInt(regs[2].trim()).toString(2)+this.getRegs(i,regs[1]).trim()+this.getRegs(i,regs[0]).trim()+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else
+			if(opcode == 'not'){
+				var t = '0x'+this.addzeros(8,parseInt(this.getRegs(i,regs[1]).trim()+'00000000'+this.getRegs(i,regs[0]).trim()+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else
+			if(opcode == 'noti'){
+				var t = '0x'+this.addzeros(8,parseInt(parseInt(regs[1].trim()).toString(2)+'00000000'+this.getRegs(i,regs[0]).trim()+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else
+			if(opcode == 'jmp'){
+				var jmpaddress = (regs[0].trim());
+				var addr_value = this.ret_addr(i,jmpLabels,jmpaddress);
+				var t = '0x0000'+this.addzeros(4,parseInt(addr_value+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else
+			if(opcode == 'beq')
+			{
+				var jmpaddress = (regs[2].trim());
+				var addr_value = this.ret_addr(i,jmpLabels,jmpaddress);
+				var t = '0x'+this.addzeros(8,parseInt(this.getRegs(i,regs[1]).trim()+this.getRegs(i,regs[0]).trim()+addr_value+reg+mem+imm+alu+code,2).toString(16));
+				binaryText += t+'\n';
+				console.log(t);
+			}else if(alu=='1' || mem=='1' || reg=='1'){
+				if(regs.length != 3){
+					throw("All alu commands take three values. Check line: "+(i+1));
+				}
+				if(imm == '0'){
+					var t = '0x'+this.addzeros(8,parseInt(this.getRegs(i,regs[2]).trim()+this.getRegs(i,regs[1]).trim()+this.getRegs(i,regs[0]).trim()+reg+mem+imm+alu+code,2).toString(16));
+					binaryText += t+'\n';
+					console.log(t);
+				}else
+				if(imm == '1'){
+					var t = '0x'+this.addzeros(8,parseInt(parseInt(regs[2]).toString(2)+this.getRegs(i,regs[1]).trim()+this.getRegs(i,regs[0]).trim()+reg+mem+imm+alu+code,2).toString(16));
+					binaryText += t+'\n';
+					console.log(t);
+				}
+			}
+		}
+		this.gbinaryText = binaryText;
+		this.gbinary_nop = binary_nop;
+		this.nop_output(binaryText,binary_nop);
+	}catch(err)
+	{
+		alert('Awap! Your parser hit a wall. Check the assembly code. \n'+ err)
+		console.log(err);
+	}
+	},
+
+	getRegs: function(no,ch){
+		if(ch.length < 2){
+			throw("Error in register at line: "+(no+1));
+		}
+		var q = parseInt(ch.substring(1)).toString(2);
+		return this.addzeros(8,q);
+		
+	},
+
+	addzeros: function (no_of_zeros,str){
+		var len = no_of_zeros - str.length;
+		var extrazero = '';
+		while(len !=0){
+			extrazero += '0';
+			len--;
+		}
+		return extrazero+str;
+	},
+
+	ret_addr: function(no,labs,val){
+		var addr_value;
+		var flag = 0;
+				for (var j=0; j< labs.length; j++){
+					if(val == labs[j].label){
+						addr_value = this.addzeros(8,(labs[j].addr).toString(2));
+						flag = 1;
+						break;
+					}
+				}
+		if(flag == 0)
+		{
+			throw("Could not find label '"+val+"' at line: "+(no+1) );	
+		}
+		return addr_value;
+	},
+	
+	typeOnChange: function(){
+		this.nop_output(this.gbinaryText,this.gbinary_nop);
+	},
+	
+	nop_output: function(binaryText,binary_nop){
+		if(document.getElementById('type').selectedIndex == 1){
+			document.getElementById('binaryText').value = "0x00000000\n"+binaryText;
+		}else
+		{
+			document.getElementById('binaryText').value = "nop\n"+binary_nop.join('\n');
+		}
+	},
+
+	download: function(){
+	var element = document.createElement('a');
+	  element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(document.getElementById('binaryText').value));
+	  element.setAttribute('download', "binary.txt");
+
+	  element.style.display = 'none';
+	  document.body.appendChild(element);
+
+	  element.click();
+
+	  document.body.removeChild(element);
+	}
+};
+</script>
+</body>
+</html>
